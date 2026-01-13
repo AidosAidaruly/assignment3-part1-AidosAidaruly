@@ -1,4 +1,7 @@
 #include "systemcalls.h"
+#include <stdlib.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -9,15 +12,25 @@
 */
 bool do_system(const char *cmd)
 {
-
 /*
  * TODO  add your code here
  *  Call the system() function with the command set in the cmd
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
-
-    return true;
+    int result = system(cmd);
+    
+    if (result == -1) {
+        // system() failed to execute
+        return false;
+    }
+    
+    // Check if command executed successfully (exit status 0)
+    if (WIFEXITED(result) && WEXITSTATUS(result) == 0) {
+        return true;
+    }
+    
+    return false;
 }
 
 /**
@@ -33,7 +46,6 @@ bool do_system(const char *cmd)
 *   fork, waitpid, or execv() command, or if a non-zero return value was returned
 *   by the command issued in @param arguments with the specified arguments.
 */
-
 bool do_exec(int count, ...)
 {
     va_list args;
@@ -58,42 +70,41 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
-
-    va_end(args);
-
-    return true;
-}
-
-/**
-* @param outputfile - The full path to the file to write with command output.
-*   This file will be closed at completion of the function call.
-* All other parameters, see do_exec above
-*/
-bool do_exec_redirect(const char *outputfile, int count, ...)
-{
-    va_list args;
-    va_start(args, count);
-    char * command[count+1];
-    int i;
-    for(i=0; i<count; i++)
-    {
-        command[i] = va_arg(args, char *);
+    fflush(stdout); // Avoid duplicate output after fork
+    
+    pid_t pid = fork();
+    
+    if (pid == -1) {
+        // fork() failed
+        va_end(args);
+        return false;
     }
-    command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
-
-
-/*
- * TODO
- *   Call execv, but first using https://stackoverflow.com/a/13784315/1446624 as a refernce,
- *   redirect standard out to a file specified by outputfile.
- *   The rest of the behaviour is same as do_exec()
- *
-*/
+    
+    if (pid == 0) {
+        // Child process
+        execv(command[0], command);
+        // If execv returns, it failed
+        exit(EXIT_FAILURE);
+    } else {
+        // Parent process
+        int status;
+        if (waitpid(pid, &status, 0) == -1) {
+            // waitpid() failed
+            va_end(args);
+            return false;
+        }
+        
+        va_end(args);
+        
+        // Check if child exited normally with status 0
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+            return true;
+        }
+        
+        return false;
+    }
 
     va_end(args);
-
     return true;
 }
+
